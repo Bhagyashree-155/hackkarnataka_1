@@ -1,0 +1,41 @@
+   npm install
+   cd contracts
+   npx hardhat node  # In one terminal
+   npx hardhat compile
+   npx hardhat run scripts/deploy.js --network localhost  # In another terminal
+
+     VITE_CONTRACT_ADDRESS=YOUR_DEPLOYED_CONTRACT_ADDRESS
+     VITE_NETWORK=localhost
+
+Start frontend:
+      cd frontend
+   npm run dev
+
+
+
+
+
+
+npm config get proxy
+npm config get https-proxy
+npm config list
+echo $env:HTTP_PROXY; echo $env:HTTPS_PROXY; echo $env:http_proxy; echo $env:https_proxy
+
+if (Test-Path "$env:USERPROFILE\.npmrc") { Get-Content "$env:USERPROFILE\.npmrc" } else { Write-Host "No .npmrc in home directory" }
+
+if (Test-Path ".npmrc") { Get-Content ".npmrc" } else { Write-Host "No .npmrc in project directory" }
+
+npm config ls -l | Select-String -Pattern "proxy"
+
+
+npm config delete proxy; npm config delete https-proxy; npm config set proxy false; npm config set https-proxy false
+
+cd contracts && npm install
+
+cd contracts; npm install
+
+cd contracts; $env:HTTP_PROXY=""; $env:HTTPS_PROXY=""; $env:http_proxy=""; $env:https_proxy=""; npx hardhat --version
+
+cd contracts; $env:HTTP_PROXY=""; $env:HTTPS_PROXY=""; $env:http_proxy=""; $env:https_proxy=""; npx hardhat node
+
+Start-Sleep -Seconds 3; Test-NetConnection -ComputerName localhost -Port 8545 -InformationLevel Quiet

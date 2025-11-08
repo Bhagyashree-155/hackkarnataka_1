@@ -1,0 +1,26 @@
+{
+  "name": "blockgenix-backend",
+  "version": "1.0.0",
+  "description": "Backend API for BlockGenix (optional)",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "keywords": [
+    "api",
+    "backend",
+    "nodejs"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

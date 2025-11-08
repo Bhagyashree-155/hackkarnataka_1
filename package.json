@@ -1,0 +1,28 @@
+{
+  "name": "blockgenix",
+  "version": "1.0.0",
+  "description": "Decentralized micro-lending and credit tracking platform",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "contracts",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "compile": "cd contracts && npx hardhat compile",
+    "deploy": "cd contracts && npx hardhat run scripts/deploy.js",
+    "test": "cd contracts && npx hardhat test"
+  },
+  "keywords": [
+    "blockchain",
+    "defi",
+    "lending",
+    "ethereum",
+    "solidity"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+
