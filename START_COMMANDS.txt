@@ -1,0 +1,41 @@
+==========================================
+BLOCKGENIX - SIMPLE START COMMANDS
+==========================================
+
+STEP 1: START BACKEND
+----------------------
+cd backend
+npm start
+
+Wait for: "🚀 BlockGenix API server running on http://localhost:5000"
+
+
+STEP 2: START FRONTEND (New Terminal)
+--------------------------------------
+cd frontend
+npm run dev
+
+Wait for: "Local: http://localhost:3000/"
+
+
+STEP 3: OPEN BROWSER
+--------------------
+Go to: http://localhost:3000
+
+
+STEP 4: CONNECT METAMASK
+-------------------------
+1. Add Network in MetaMask:
+   - Name: Hardhat Local
+   - RPC: http://127.0.0.1:8545
+   - Chain ID: 1337
+   - Currency: ETH
+
+2. Import Account:
+   - Private Key: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
+3. Click "Connect Wallet" in BlockGenix
+
+
+==========================================
+

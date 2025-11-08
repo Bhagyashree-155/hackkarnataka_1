@@ -1,13 +1,29 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Wallet, Menu, X } from 'lucide-react'
+import { Wallet, Menu, X, LogOut, User } from 'lucide-react'
 import { useWallet } from '../context/WalletContext'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 const Navbar = () => {
   const { account, isConnected, connectWallet, disconnectWallet, balance } = useWallet()
   const location = useLocation()
+  const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user')
+    if (userData) {
+      setUser(JSON.parse(userData))
+    }
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    setUser(null)
+    navigate('/login')
+  }
 
   const formatAddress = (address) => {
     if (!address) return ''
@@ -22,7 +38,7 @@ const Navbar = () => {
     >
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
-          <Link to="/" className="flex items-center space-x-2">
+          <Link to="/dashboard" className="flex items-center space-x-2">
             <motion.div
               whileHover={{ rotate: 360 }}
               transition={{ duration: 0.5 }}
@@ -37,9 +53,9 @@ const Navbar = () => {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-6">
             <Link
-              to="/"
+              to="/dashboard"
               className={`px-4 py-2 rounded-lg transition-all ${
-                location.pathname === '/'
+                location.pathname === '/dashboard'
                   ? 'bg-primary-500/30 text-primary-300'
                   : 'text-gray-300 hover:text-primary-400'
               }`}
@@ -68,8 +84,14 @@ const Navbar = () => {
             </Link>
           </div>
 
-          {/* Wallet Button */}
+          {/* User Info & Wallet Button */}
           <div className="hidden md:flex items-center space-x-4">
+            {user && (
+              <div className="glass-card px-4 py-2 flex items-center space-x-2">
+                <User className="w-4 h-4 text-primary-300" />
+                <span className="text-sm text-gray-300">{user.name}</span>
+              </div>
+            )}
             {isConnected ? (
               <motion.div
                 initial={{ scale: 0.8 }}
@@ -106,6 +128,17 @@ const Navbar = () => {
                 <span>Connect Wallet</span>
               </motion.button>
             )}
+            {user && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleLogout}
+                className="glass-card px-4 py-2 flex items-center space-x-2 text-red-400 hover:text-red-300"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Logout</span>
+              </motion.button>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -126,7 +159,7 @@ const Navbar = () => {
             className="md:hidden mt-4 space-y-2"
           >
             <Link
-              to="/"
+              to="/dashboard"
               className="block px-4 py-2 rounded-lg text-gray-300 hover:bg-white/10"
               onClick={() => setMobileMenuOpen(false)}
             >
@@ -146,6 +179,17 @@ const Navbar = () => {
             >
               Lenders
             </Link>
+            {user && (
+              <div className="px-4 py-2">
+                <div className="text-sm text-gray-300 mb-2">{user.name}</div>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm text-red-400"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
             {isConnected ? (
               <div className="px-4 py-2 space-y-2">
                 <div className="text-sm text-gray-300">

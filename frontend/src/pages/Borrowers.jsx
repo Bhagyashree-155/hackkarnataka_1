@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion'
-import { Plus, Clock, CheckCircle, XCircle } from 'lucide-react'
+import { Plus, Clock, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import { useWallet } from '../context/WalletContext'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { loansAPI } from '../services/api.js'
 
 const Borrowers = () => {
   const { isConnected, account } = useWallet()
@@ -9,42 +10,65 @@ const Borrowers = () => {
   const [loanAmount, setLoanAmount] = useState('')
   const [loanTerm, setLoanTerm] = useState('')
   const [interestRate, setInterestRate] = useState('')
+  const [loans, setLoans] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
 
-  const loans = [
-    {
-      id: 1,
-      amount: '2.5',
-      term: '30',
-      interestRate: '5',
-      status: 'pending',
-      createdAt: '2 hours ago',
-    },
-    {
-      id: 2,
-      amount: '1.0',
-      term: '15',
-      interestRate: '3',
-      status: 'approved',
-      createdAt: '1 day ago',
-    },
-    {
-      id: 3,
-      amount: '5.0',
-      term: '60',
-      interestRate: '7',
-      status: 'rejected',
-      createdAt: '3 days ago',
-    },
-  ]
+  // Fetch loans on component mount
+  useEffect(() => {
+    fetchLoans()
+  }, [])
 
-  const handleSubmitLoan = (e) => {
+  const fetchLoans = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const response = await loansAPI.getAllLoans()
+      setLoans(response.loans || [])
+    } catch (err) {
+      console.error('Error fetching loans:', err)
+      setError(err.message || 'Failed to fetch loans')
+      setLoans([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSubmitLoan = async (e) => {
     e.preventDefault()
-    // TODO: Integrate with smart contract
-    console.log('Submitting loan:', { loanAmount, loanTerm, interestRate })
-    setShowModal(false)
-    setLoanAmount('')
-    setLoanTerm('')
-    setInterestRate('')
+    setSubmitting(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const loanData = {
+        loanType: 'personal', // Default loan type
+        amount: parseFloat(loanAmount),
+        purpose: 'General purpose',
+        employmentStatus: 'employed',
+        tenure: parseInt(loanTerm),
+        interestRate: parseFloat(interestRate),
+      }
+
+      const response = await loansAPI.createLoan(loanData)
+      
+      if (response.success) {
+        setSuccess('Loan request submitted successfully!')
+        setShowModal(false)
+        setLoanAmount('')
+        setLoanTerm('')
+        setInterestRate('')
+        // Refresh loans list
+        await fetchLoans()
+      }
+    } catch (err) {
+      console.error('Error submitting loan:', err)
+      setError(err.message || 'Failed to submit loan request')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const getStatusIcon = (status) => {
@@ -52,6 +76,7 @@ const Borrowers = () => {
       case 'pending':
         return <Clock className="w-5 h-5 text-yellow-400" />
       case 'approved':
+      case 'active':
         return <CheckCircle className="w-5 h-5 text-green-400" />
       case 'rejected':
         return <XCircle className="w-5 h-5 text-red-400" />
@@ -65,12 +90,27 @@ const Borrowers = () => {
       case 'pending':
         return 'bg-yellow-400/20 text-yellow-400'
       case 'approved':
+      case 'active':
         return 'bg-green-400/20 text-green-400'
       case 'rejected':
         return 'bg-red-400/20 text-red-400'
       default:
         return ''
     }
+  }
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A'
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now - date
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 60) return `${diffMins} minutes ago`
+    if (diffHours < 24) return `${diffHours} hours ago`
+    return `${diffDays} days ago`
   }
 
   return (
@@ -109,51 +149,93 @@ const Borrowers = () => {
         </motion.div>
       )}
 
-      <div className="grid grid-cols-1 gap-6">
-        {loans.map((loan, index) => (
-          <motion.div
-            key={loan.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1 }}
-            whileHover={{ scale: 1.02, y: -5 }}
-            className="glass-card glass-card-hover p-6"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-3">
-                {getStatusIcon(loan.status)}
+      {/* Success Message */}
+      {success && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card p-4 mb-6 bg-green-500/20 border border-green-500/50 text-green-400"
+        >
+          {success}
+        </motion.div>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card p-4 mb-6 bg-red-500/20 border border-red-500/50 text-red-400"
+        >
+          {error}
+        </motion.div>
+      )}
+
+      {/* Loading State */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 text-primary-400 animate-spin" />
+          <span className="ml-3 text-gray-400">Loading loans...</span>
+        </div>
+      ) : loans.length === 0 ? (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-card p-12 text-center"
+        >
+          <p className="text-gray-400 text-lg">
+            No loan requests yet. Click "Request Loan" to create one.
+          </p>
+        </motion.div>
+      ) : (
+        <div className="grid grid-cols-1 gap-6">
+          {loans.map((loan, index) => (
+            <motion.div
+              key={loan._id || loan.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+              whileHover={{ scale: 1.02, y: -5 }}
+              className="glass-card glass-card-hover p-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-3">
+                  {getStatusIcon(loan.status)}
+                  <div>
+                    <h3 className="text-xl font-bold text-white">
+                      Loan #{loan._id?.slice(-6) || loan.id}
+                    </h3>
+                    <p className="text-gray-400 text-sm">
+                      {formatDate(loan.createdAt)}
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(
+                    loan.status
+                  )}`}
+                >
+                  {loan.status?.toUpperCase() || 'PENDING'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-4 mt-4">
                 <div>
-                  <h3 className="text-xl font-bold text-white">
-                    Loan #{loan.id}000
-                  </h3>
-                  <p className="text-gray-400 text-sm">{loan.createdAt}</p>
+                  <p className="text-gray-400 text-sm mb-1">Amount</p>
+                  <p className="text-white font-semibold">{loan.amount} ETH</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Term</p>
+                  <p className="text-white font-semibold">{loan.tenure} days</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Interest Rate</p>
+                  <p className="text-white font-semibold">{loan.interestRate}%</p>
                 </div>
               </div>
-              <span
-                className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(
-                  loan.status
-                )}`}
-              >
-                {loan.status.toUpperCase()}
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-4 mt-4">
-              <div>
-                <p className="text-gray-400 text-sm mb-1">Amount</p>
-                <p className="text-white font-semibold">{loan.amount} ETH</p>
-              </div>
-              <div>
-                <p className="text-gray-400 text-sm mb-1">Term</p>
-                <p className="text-white font-semibold">{loan.term} days</p>
-              </div>
-              <div>
-                <p className="text-gray-400 text-sm mb-1">Interest Rate</p>
-                <p className="text-white font-semibold">{loan.interestRate}%</p>
-              </div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
 
       {/* Loan Request Modal */}
       {showModal && (
@@ -161,7 +243,7 @@ const Borrowers = () => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-          onClick={() => setShowModal(false)}
+          onClick={() => !submitting && setShowModal(false)}
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
@@ -172,6 +254,11 @@ const Borrowers = () => {
             <h2 className="text-2xl font-bold text-white mb-6">
               Request a Loan
             </h2>
+            {error && (
+              <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 text-red-400 text-sm rounded">
+                {error}
+              </div>
+            )}
             <form onSubmit={handleSubmitLoan} className="space-y-4">
               <div>
                 <label className="block text-gray-300 text-sm mb-2">
@@ -180,10 +267,12 @@ const Borrowers = () => {
                 <input
                   type="number"
                   step="0.01"
+                  min="0.01"
                   value={loanAmount}
                   onChange={(e) => setLoanAmount(e.target.value)}
                   className="w-full glass-card p-3 text-white bg-white/5 border border-white/20 rounded-lg focus:outline-none focus:border-primary-400"
                   required
+                  disabled={submitting}
                 />
               </div>
               <div>
@@ -192,10 +281,12 @@ const Borrowers = () => {
                 </label>
                 <input
                   type="number"
+                  min="1"
                   value={loanTerm}
                   onChange={(e) => setLoanTerm(e.target.value)}
                   className="w-full glass-card p-3 text-white bg-white/5 border border-white/20 rounded-lg focus:outline-none focus:border-primary-400"
                   required
+                  disabled={submitting}
                 />
               </div>
               <div>
@@ -205,10 +296,12 @@ const Borrowers = () => {
                 <input
                   type="number"
                   step="0.1"
+                  min="0"
                   value={interestRate}
                   onChange={(e) => setInterestRate(e.target.value)}
                   className="w-full glass-card p-3 text-white bg-white/5 border border-white/20 rounded-lg focus:outline-none focus:border-primary-400"
                   required
+                  disabled={submitting}
                 />
               </div>
               <div className="flex space-x-4 mt-6">
@@ -218,6 +311,7 @@ const Borrowers = () => {
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setShowModal(false)}
                   className="flex-1 glass-card p-3 text-gray-300 hover:text-white"
+                  disabled={submitting}
                 >
                   Cancel
                 </motion.button>
@@ -225,9 +319,17 @@ const Borrowers = () => {
                   type="submit"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="flex-1 glass-card p-3 bg-primary-500/30 text-primary-300 hover:bg-primary-500/40"
+                  className="flex-1 glass-card p-3 bg-primary-500/30 text-primary-300 hover:bg-primary-500/40 flex items-center justify-center space-x-2"
+                  disabled={submitting}
                 >
-                  Submit Request
+                  {submitting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Submitting...</span>
+                    </>
+                  ) : (
+                    <span>Submit Request</span>
+                  )}
                 </motion.button>
               </div>
             </form>
@@ -239,4 +341,3 @@ const Borrowers = () => {
 }
 
 export default Borrowers
-

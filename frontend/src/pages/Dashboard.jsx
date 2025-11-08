@@ -1,9 +1,18 @@
 import { motion } from 'framer-motion'
 import { TrendingUp, Users, DollarSign, Activity } from 'lucide-react'
 import { useWallet } from '../context/WalletContext'
+import { useState, useEffect } from 'react'
 
 const Dashboard = () => {
   const { isConnected } = useWallet()
+  const [user, setUser] = useState(null)
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user')
+    if (userData) {
+      setUser(JSON.parse(userData))
+    }
+  }, [])
 
   const stats = [
     {
@@ -66,9 +75,32 @@ const Dashboard = () => {
       >
         <h1 className="text-4xl font-bold text-white mb-2">Dashboard</h1>
         <p className="text-gray-400">
-          Welcome to BlockGenix - Decentralized Micro-Lending Platform
+          {user ? `Welcome back, ${user.name}!` : 'Welcome to BlockGenix - Decentralized Micro-Lending Platform'}
         </p>
       </motion.div>
+
+      {user && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-card p-6 mb-8"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <p className="text-gray-400 text-sm">Name</p>
+              <p className="text-white font-semibold">{user.name}</p>
+            </div>
+            <div>
+              <p className="text-gray-400 text-sm">Email</p>
+              <p className="text-white font-semibold">{user.email}</p>
+            </div>
+            <div>
+              <p className="text-gray-400 text-sm">Role</p>
+              <p className="text-white font-semibold capitalize">{user.role}</p>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       {!isConnected && (
         <motion.div

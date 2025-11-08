@@ -7,9 +7,13 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 async function apiRequest(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
   
+  // Get token from localStorage
+  const token = localStorage.getItem('token');
+  
   const config = {
     headers: {
       'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` }),
       ...options.headers,
     },
     ...options,
@@ -101,6 +105,16 @@ export const loansAPI = {
   deleteLoan: async (id) => {
     return apiRequest(`/api/loans/${id}`, {
       method: 'DELETE',
+    });
+  },
+
+  /**
+   * Approve or reject loan (Admin only)
+   */
+  approveRejectLoan: async (id, status, remarks = '') => {
+    return apiRequest(`/api/loans/${id}/approve`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, remarks }),
     });
   },
 };
