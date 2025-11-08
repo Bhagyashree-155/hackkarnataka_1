@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.js';
 import loanRoutes from './routes/loans.js';
 import documentRoutes from './routes/documents.js';
 import adminRoutes from './routes/admin.js';
+import loanTypeRoutes from './routes/loanTypes.js';
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/loans', loanRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/loan-types', loanTypeRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

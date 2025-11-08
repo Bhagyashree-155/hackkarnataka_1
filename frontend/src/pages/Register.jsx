@@ -15,6 +15,11 @@ const Register = () => {
     password: '',
     confirmPassword: '',
     walletAddress: '',
+    // Document IDs (collected but not stored - for verification only)
+    aadhaarNumber: '',
+    incomeCertificateNumber: '',
+    educationCertificateNumber: '',
+    studentRegistrationNumber: '',
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -63,6 +68,11 @@ const Register = () => {
           creditScore: parseInt(formData.creditScore) || 0,
           password: formData.password,
           walletAddress: formData.walletAddress || null,
+          // Document IDs - sent for verification but not stored
+          aadhaarNumber: formData.aadhaarNumber,
+          incomeCertificateNumber: formData.incomeCertificateNumber,
+          educationCertificateNumber: formData.educationCertificateNumber,
+          studentRegistrationNumber: formData.studentRegistrationNumber,
         }),
       })
 
@@ -75,6 +85,19 @@ const Register = () => {
       // Store token and user data
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
+
+      // Show verification results if available
+      if (data.verification) {
+        const verificationMessages = [
+          data.verification.aadhaar,
+          data.verification.income,
+          data.verification.education
+        ].filter(msg => msg).join('\n');
+        
+        if (verificationMessages) {
+          alert(`Document Verification:\n${verificationMessages}`)
+        }
+      }
 
       // Redirect to dashboard
       navigate('/dashboard')
@@ -265,6 +288,75 @@ const Register = () => {
             <p className="text-gray-400 text-xs mt-1">
               Connect your MetaMask wallet address (optional)
             </p>
+          </div>
+
+          {/* Document IDs Section - Step 1: Input official document IDs */}
+          <div className="border-t border-white/10 pt-6">
+            <h3 className="text-white font-semibold mb-4">Document Information (For Verification)</h3>
+            <p className="text-gray-400 text-xs mb-4">
+              These document IDs are collected for verification purposes only and will not be stored permanently.
+            </p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-gray-300 text-sm mb-2">
+                  Aadhaar Number
+                </label>
+                <input
+                  type="text"
+                  name="aadhaarNumber"
+                  value={formData.aadhaarNumber}
+                  onChange={handleChange}
+                  className="w-full glass-card px-4 py-3 text-white bg-white/5 border border-white/20 rounded-lg focus:outline-none focus:border-primary-400"
+                  placeholder="Enter 12-digit Aadhaar number"
+                  maxLength="12"
+                  pattern="[0-9]{12}"
+                />
+                <p className="text-gray-400 text-xs mt-1">
+                  Used for KYC verification (not stored permanently)
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-gray-300 text-sm mb-2">
+                  Income Certificate Number
+                </label>
+                <input
+                  type="text"
+                  name="incomeCertificateNumber"
+                  value={formData.incomeCertificateNumber}
+                  onChange={handleChange}
+                  className="w-full glass-card px-4 py-3 text-white bg-white/5 border border-white/20 rounded-lg focus:outline-none focus:border-primary-400"
+                  placeholder="Enter income certificate number"
+                />
+                <p className="text-gray-400 text-xs mt-1">
+                  Used for income verification (not stored permanently)
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-gray-300 text-sm mb-2">
+                  Student Registration Number / Education Certificate Number (Optional)
+                </label>
+                <input
+                  type="text"
+                  name="studentRegistrationNumber"
+                  value={formData.studentRegistrationNumber || formData.educationCertificateNumber || ''}
+                  onChange={(e) => {
+                    setFormData({
+                      ...formData,
+                      studentRegistrationNumber: e.target.value,
+                      educationCertificateNumber: e.target.value
+                    });
+                  }}
+                  className="w-full glass-card px-4 py-3 text-white bg-white/5 border border-white/20 rounded-lg focus:outline-none focus:border-primary-400"
+                  placeholder="Enter student registration number (optional)"
+                />
+                <p className="text-gray-400 text-xs mt-1">
+                  Optional - Used for education verification (not stored permanently)
+                </p>
+              </div>
+            </div>
           </div>
 
           <motion.button

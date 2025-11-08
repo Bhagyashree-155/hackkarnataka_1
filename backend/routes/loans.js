@@ -3,9 +3,10 @@ import LoanApplication from '../models/LoanApplication.js';
 import Repayment from '../models/Repayment.js';
 import Document from '../models/Document.js';
 import User from '../models/User.js';
+import LoanType from '../models/LoanType.js';
 import { authenticate, isAdmin } from '../middleware/auth.js';
 import { checkEligibility, checkSuspiciousActivity } from '../utils/eligibility.js';
-import { generateEMISchedule, calculateEMI } from '../utils/emiCalculator.js';
+import { generateEMISchedule, calculateEMI, calculateTotalInterest } from '../utils/emiCalculator.js';
 
 const router = express.Router();
 
@@ -23,7 +24,7 @@ router.get('/', authenticate, async (req, res) => {
     }
 
     const loans = await LoanApplication.find(query)
-      .populate('userId', 'name email')
+      .populate('userId', 'name email kycVerified incomeVerified educationVerified trusted')
       .populate('approvedBy', 'name email')
       .sort({ createdAt: -1 });
 
@@ -37,7 +38,7 @@ router.get('/', authenticate, async (req, res) => {
 router.get('/:id', authenticate, async (req, res) => {
   try {
     const loan = await LoanApplication.findById(req.params.id)
-      .populate('userId', 'name email age citizenship monthlyIncome creditScore')
+      .populate('userId', 'name email age citizenship monthlyIncome creditScore kycVerified incomeVerified educationVerified trusted')
       .populate('approvedBy', 'name email');
 
     if (!loan) {
@@ -77,7 +78,9 @@ router.post('/', authenticate, async (req, res) => {
       collateralValue,
       collateralInfo,
       tenure,
-      interestRate
+      interestRate,
+      accountDetails,
+      emiPreview
     } = req.body;
 
     // Get user
@@ -85,6 +88,9 @@ router.post('/', authenticate, async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
+
+    // Check if user is trusted (all documents verified)
+    // This will be checked during loan approval
 
     // Get active loans count
     const activeLoansCount = await LoanApplication.countDocuments({
@@ -113,7 +119,10 @@ router.post('/', authenticate, async (req, res) => {
       collateralValue: collateralValue || 0,
       collateralInfo: collateralInfo || '',
       tenure,
-      interestRate
+      // Interest rate will be set by lender when approving
+      interestRate: interestRate || null,
+      accountDetails: accountDetails || {},
+      emiPreview: emiPreview || {}
     });
 
     // Check eligibility
@@ -164,22 +173,56 @@ router.post('/', authenticate, async (req, res) => {
 router.patch('/:id/approve', authenticate, isAdmin, async (req, res) => {
   try {
     const { status, remarks } = req.body;
-    const loan = await LoanApplication.findById(req.params.id);
+    const loan = await LoanApplication.findById(req.params.id).populate('userId');
 
     if (!loan) {
       return res.status(404).json({ error: 'Loan not found' });
     }
 
     if (status === 'approved') {
+      // Get interest rate from loan type
+      const loanTypeData = await LoanType.findOne({ name: loan.loanType, isActive: true });
+      if (!loanTypeData) {
+        return res.status(400).json({ error: 'Loan type not found or inactive' });
+      }
+      const finalInterestRate = loanTypeData.interestRate;
+
+      // Get borrower and check if required documents are verified (trusted)
+      const borrower = loan.userId;
+      if (borrower) {
+        // Check if required documents are verified (Aadhaar and Income are required, Education is optional)
+        const requiredDocumentsVerified = borrower.kycVerified && borrower.incomeVerified;
+        
+        if (!requiredDocumentsVerified) {
+          loan.status = 'rejected';
+          loan.adminRemarks = `Loan rejected: Required documents not verified. KYC: ${borrower.kycVerified ? '✅' : '❌'}, Income: ${borrower.incomeVerified ? '✅' : '❌'}`;
+          await loan.save();
+          return res.status(400).json({ 
+            error: `Loan cannot be approved. Required documents must be verified. KYC: ${borrower.kycVerified ? 'Verified' : 'Not Verified'}, Income: ${borrower.incomeVerified ? 'Verified' : 'Not Verified'}`,
+            loan
+          });
+        }
+
+        // Mark borrower as trusted if required documents verified
+        if (requiredDocumentsVerified && !borrower.trusted) {
+          borrower.trusted = true;
+          await borrower.save();
+        }
+      }
+
+      loan.interestRate = finalInterestRate;
       loan.status = 'approved';
       loan.approvedBy = req.user._id;
       loan.approvedAt = new Date();
+      
+      // Calculate tenure in months (convert days to months)
+      const tenureMonths = Math.ceil(loan.tenure / 30);
       
       // Generate EMI schedule
       const emiSchedule = generateEMISchedule(
         loan.amount,
         loan.interestRate,
-        loan.tenure,
+        tenureMonths,
         new Date()
       );
 

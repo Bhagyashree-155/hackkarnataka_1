@@ -111,11 +111,43 @@ export const loansAPI = {
   /**
    * Approve or reject loan (Admin only)
    */
-  approveRejectLoan: async (id, status, remarks = '') => {
+  approveRejectLoan: async (id, status, remarks = '', interestRate = null) => {
+    const body = { status, remarks };
+    if (interestRate !== null) {
+      body.interestRate = interestRate;
+    }
     return apiRequest(`/api/loans/${id}/approve`, {
       method: 'PATCH',
-      body: JSON.stringify({ status, remarks }),
+      body: JSON.stringify(body),
     });
+  },
+
+  /**
+   * Make repayment
+   */
+  makeRepayment: async (loanId, emiNumber, amount) => {
+    return apiRequest(`/api/loans/${loanId}/repay`, {
+      method: 'POST',
+      body: JSON.stringify({ emiNumber, amount }),
+    });
+  },
+};
+
+// ============ Loan Types API ============
+
+export const loanTypesAPI = {
+  /**
+   * Get all active loan types
+   */
+  getAllLoanTypes: async () => {
+    return apiRequest('/api/loan-types');
+  },
+
+  /**
+   * Get loan type by ID
+   */
+  getLoanType: async (id) => {
+    return apiRequest(`/api/loan-types/${id}`);
   },
 };
 
@@ -154,6 +186,7 @@ export const healthCheck = async () => {
 export default {
   analytics: analyticsAPI,
   loans: loansAPI,
+  loanTypes: loanTypesAPI,
   activity: activityAPI,
   user: userAPI,
   healthCheck,

@@ -3,13 +3,18 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
+import { verifyAllDocuments } from '../utils/documentVerification.js';
 
 const router = express.Router();
 
 // Register new user
 router.post('/register', async (req, res) => {
   try {
-    const { name, age, citizenship, email, monthlyIncome, creditScore, password, walletAddress } = req.body;
+    const { 
+      name, age, citizenship, email, monthlyIncome, creditScore, password, walletAddress,
+      // Document IDs (collected but not stored - for verification only)
+      aadhaarNumber, incomeCertificateNumber, educationCertificateNumber, studentRegistrationNumber
+    } = req.body;
 
     // Check if user already exists by email
     const existingUserByEmail = await User.findOne({ email: email.toLowerCase().trim() });
@@ -28,7 +33,18 @@ router.post('/register', async (req, res) => {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Create user
+    // Verify documents against hardcoded lists
+    // Student registration is optional
+    const studentRegNumber = studentRegistrationNumber || educationCertificateNumber || '';
+    const verificationResult = verifyAllDocuments(
+      aadhaarNumber,
+      incomeCertificateNumber,
+      studentRegNumber
+    );
+
+    // Note: Document IDs are NOT stored in the database for privacy - only verification status is stored
+
+    // Create user with verification status
     const user = new User({
       name: name.trim(),
       age,
@@ -38,7 +54,14 @@ router.post('/register', async (req, res) => {
       creditScore: creditScore || 0,
       passwordHash,
       walletAddress: walletAddress ? walletAddress.toLowerCase().trim() : null,
-      role: 'borrower'
+      role: 'borrower',
+      // Set verification flags based on document verification
+      kycVerified: verificationResult.aadhaar.verified,
+      incomeVerified: verificationResult.income.verified,
+      // Education is optional - if not provided, defaults to true (verified)
+      educationVerified: studentRegNumber ? verificationResult.education.verified : true,
+      // Trusted if required documents (Aadhaar and Income) are verified
+      trusted: verificationResult.aadhaar.verified && verificationResult.income.verified
     });
 
     await user.save();
@@ -58,7 +81,16 @@ router.post('/register', async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        walletAddress: user.walletAddress
+        walletAddress: user.walletAddress,
+        kycVerified: user.kycVerified,
+        incomeVerified: user.incomeVerified,
+        educationVerified: user.educationVerified,
+        trusted: user.trusted
+      },
+      verification: {
+        aadhaar: verificationResult.aadhaar.message,
+        income: verificationResult.income.message,
+        education: verificationResult.education.message
       }
     });
   } catch (error) {

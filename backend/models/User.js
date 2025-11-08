@@ -45,6 +45,24 @@ const userSchema = new mongoose.Schema({
   walletAddress: {
     type: String
   },
+  // Document verification fields
+  kycVerified: {
+    type: Boolean,
+    default: false
+  },
+  incomeVerified: {
+    type: Boolean,
+    default: false
+  },
+  educationVerified: {
+    type: Boolean,
+    default: true // Optional - defaults to true (not required)
+  },
+  // Trusted status: true if all documents are verified
+  trusted: {
+    type: Boolean,
+    default: false
+  },
   createdAt: {
     type: Date,
     default: Date.now

@@ -33,23 +33,28 @@ const Lenders = () => {
     }
   }
 
-  const handleApprove = async (loanId) => {
-    if (!window.confirm('Are you sure you want to approve this loan?')) {
+  const handleApprove = async (loan) => {
+    if (!window.confirm(`Are you sure you want to approve this ${loan.loanType || 'loan'}?`)) {
       return
     }
 
-    setProcessing(loanId)
+    setProcessing(loan._id || loan.id)
     setError(null)
     setSuccess(null)
 
     try {
-      const response = await loansAPI.approveRejectLoan(loanId, 'approved')
+      // Approve without interest rate - backend will use loan type interest rate
+      const response = await loansAPI.approveRejectLoan(
+        loan._id || loan.id, 
+        'approved',
+        ''
+      )
       
       if (response.success || response.loan) {
         setSuccess('Loan approved successfully!')
         // Refresh loans list
         await fetchPendingLoans()
-        if (selectedLoan?._id === loanId) {
+        if (selectedLoan?._id === loan._id) {
           setSelectedLoan(null)
         }
       }
@@ -92,8 +97,10 @@ const Lenders = () => {
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A'
     const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now - date
+    // Convert to IST (UTC+5:30)
+    const istDate = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }))
+    const diffMs = now - istDate
     const diffMins = Math.floor(diffMs / 60000)
     const diffHours = Math.floor(diffMs / 3600000)
     const diffDays = Math.floor(diffMs / 86400000)
@@ -101,6 +108,20 @@ const Lenders = () => {
     if (diffMins < 60) return `${diffMins} minutes ago`
     if (diffHours < 24) return `${diffHours} hours ago`
     return `${diffDays} days ago`
+  }
+
+  const formatDateTimeIST = (dateString) => {
+    if (!dateString) return 'N/A'
+    const date = new Date(dateString)
+    return date.toLocaleString('en-IN', { 
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    })
   }
 
   const formatAddress = (address) => {
@@ -175,7 +196,7 @@ const Lenders = () => {
       ) : (
         <div className="grid grid-cols-1 gap-6">
           {loanRequests.map((loan, index) => {
-            const isProcessing = processing === loan._id
+            const isProcessing = processing === (loan._id || loan.id)
             const borrowerAddress = loan.userId?.walletAddress || loan.borrower || 'N/A'
             const borrowerName = loan.userId?.name || 'Unknown Borrower'
             
@@ -191,7 +212,7 @@ const Lenders = () => {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <h3 className="text-xl font-bold text-white mb-1">
-                      Loan Request #{loan._id?.slice(-6) || loan.id}
+                      {loan.loanType || 'Loan'} Request #{loan._id?.slice(-6) || loan.id}
                     </h3>
                     <p className="text-gray-400 text-sm">
                       Borrower: <span className="font-mono text-primary-300">{borrowerName}</span>
@@ -199,14 +220,20 @@ const Lenders = () => {
                     <p className="text-gray-400 text-sm">
                       Wallet: <span className="font-mono">{formatAddress(borrowerAddress)}</span>
                     </p>
-                    <p className="text-gray-400 text-sm">{formatDate(loan.createdAt)}</p>
+                    <p className="text-gray-400 text-sm">{formatDateTimeIST(loan.createdAt)}</p>
                   </div>
                   <span className="px-3 py-1 rounded-full text-sm font-semibold bg-yellow-400/20 text-yellow-400">
                     PENDING
                   </span>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-4 gap-4 mb-6">
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Loan Type</p>
+                    <p className="text-white font-semibold text-lg">
+                      {loan.loanType || 'N/A'}
+                    </p>
+                  </div>
                   <div>
                     <p className="text-gray-400 text-sm mb-1">Amount</p>
                     <p className="text-white font-semibold text-lg">
@@ -222,17 +249,61 @@ const Lenders = () => {
                   <div>
                     <p className="text-gray-400 text-sm mb-1">Interest Rate</p>
                     <p className="text-white font-semibold text-lg">
-                      {loan.interestRate}%
+                      {loan.interestRate ? `${loan.interestRate}%` : 'Will use loan type rate'}
                     </p>
                   </div>
                 </div>
+
+                {/* Document Verification Status */}
+                {loan.userId && (
+                  <div className="mb-6 p-4 glass-card bg-white/5 rounded-lg">
+                    <h4 className="text-white font-semibold mb-3">Document Verification Status</h4>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-gray-400 text-xs mb-1">Aadhaar (KYC)</p>
+                        <p className={`text-sm font-semibold ${loan.userId.kycVerified ? 'text-green-400' : 'text-red-400'}`}>
+                          {loan.userId.kycVerified ? '✅ Verified' : '❌ Not Verified'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400 text-xs mb-1">Income Certificate</p>
+                        <p className={`text-sm font-semibold ${loan.userId.incomeVerified ? 'text-green-400' : 'text-red-400'}`}>
+                          {loan.userId.incomeVerified ? '✅ Verified' : '❌ Not Verified'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400 text-xs mb-1">Education Certificate (Optional)</p>
+                        <p className={`text-sm font-semibold ${loan.userId.educationVerified ? 'text-green-400' : 'text-yellow-400'}`}>
+                          {loan.userId.educationVerified ? '✅ Verified' : '⚠️ Not Provided (Optional)'}
+                        </p>
+                      </div>
+                    </div>
+                    {loan.userId.trusted && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <p className="text-green-400 text-sm font-semibold">
+                          ✅ Required Documents Verified - Borrower is Trusted
+                        </p>
+                      </div>
+                    )}
+                    {!loan.userId.trusted && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <p className="text-red-400 text-sm font-semibold">
+                          ❌ Required Documents Not Verified - Cannot Approve Loan
+                        </p>
+                        <p className="text-gray-400 text-xs mt-1">
+                          Aadhaar and Income Certificate must be verified
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {isConnected && (
                   <div className="flex space-x-4">
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      onClick={() => handleApprove(loan._id || loan.id)}
+                      onClick={() => handleApprove(loan)}
                       disabled={isProcessing}
                       className="flex-1 glass-card p-3 bg-green-500/20 text-green-400 hover:bg-green-500/30 flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -304,8 +375,12 @@ const Lenders = () => {
                 <p className="text-white">{selectedLoan.userId?.email || 'N/A'}</p>
               </div>
               <div>
-                <p className="text-gray-400 text-sm mb-1">Borrower Address</p>
+                <p className="text-gray-400 text-sm mb-1">Borrower Wallet</p>
                 <p className="text-white font-mono text-sm">{selectedLoan.userId?.walletAddress || selectedLoan.borrower || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-gray-400 text-sm mb-1">Loan Type</p>
+                <p className="text-white text-xl font-semibold">{selectedLoan.loanType || 'Personal'}</p>
               </div>
               <div>
                 <p className="text-gray-400 text-sm mb-1">Loan Amount</p>
@@ -322,20 +397,71 @@ const Lenders = () => {
               <div>
                 <p className="text-gray-400 text-sm mb-1">Interest Rate</p>
                 <p className="text-white text-xl font-semibold">
-                  {selectedLoan.interestRate}%
+                  {selectedLoan.interestRate ? `${selectedLoan.interestRate}%` : 'Will use loan type rate'}
                 </p>
               </div>
-              <div>
-                <p className="text-gray-400 text-sm mb-1">Loan Type</p>
-                <p className="text-white">{selectedLoan.loanType || 'Personal'}</p>
-              </div>
-              <div>
-                <p className="text-gray-400 text-sm mb-1">Purpose</p>
-                <p className="text-white">{selectedLoan.purpose || 'N/A'}</p>
-              </div>
+              {/* Document Verification Status */}
+              {selectedLoan.userId && (
+                <div className="pt-4 border-t border-white/10">
+                  <h3 className="text-lg font-bold text-white mb-3">Document Verification Status</h3>
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-gray-400 text-sm mb-1">Aadhaar (KYC)</p>
+                      <p className={`text-sm font-semibold ${selectedLoan.userId.kycVerified ? 'text-green-400' : 'text-red-400'}`}>
+                        {selectedLoan.userId.kycVerified ? '✅ Verified' : '❌ Not Verified'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-sm mb-1">Income Certificate</p>
+                      <p className={`text-sm font-semibold ${selectedLoan.userId.incomeVerified ? 'text-green-400' : 'text-red-400'}`}>
+                        {selectedLoan.userId.incomeVerified ? '✅ Verified' : '❌ Not Verified'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-sm mb-1">Education Certificate (Optional)</p>
+                      <p className={`text-sm font-semibold ${selectedLoan.userId.educationVerified ? 'text-green-400' : 'text-yellow-400'}`}>
+                        {selectedLoan.userId.educationVerified ? '✅ Verified' : '⚠️ Not Provided (Optional)'}
+                      </p>
+                    </div>
+                    {selectedLoan.userId.trusted && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <p className="text-green-400 text-sm font-semibold">
+                          ✅ Required Documents Verified - Borrower is Trusted
+                        </p>
+                      </div>
+                    )}
+                    {!selectedLoan.userId.trusted && (
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <p className="text-red-400 text-sm font-semibold">
+                          ❌ Required Documents Not Verified - Cannot Approve Loan
+                        </p>
+                        <p className="text-gray-400 text-xs mt-1">
+                          Aadhaar and Income Certificate must be verified
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {selectedLoan.accountDetails && (
+                <>
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Account Number</p>
+                    <p className="text-white font-mono text-sm">{selectedLoan.accountDetails.accountNumber || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Address</p>
+                    <p className="text-white text-sm">{selectedLoan.accountDetails.address || 'N/A'}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Mobile Number</p>
+                    <p className="text-white text-sm">{selectedLoan.accountDetails.mobileNumber || 'N/A'}</p>
+                  </div>
+                </>
+              )}
               <div>
                 <p className="text-gray-400 text-sm mb-1">Created</p>
-                <p className="text-white">{formatDate(selectedLoan.createdAt)}</p>
+                <p className="text-white">{formatDateTimeIST(selectedLoan.createdAt)}</p>
               </div>
               {selectedLoan.eligibilityResults && (
                 <div>

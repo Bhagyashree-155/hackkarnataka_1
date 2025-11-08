@@ -8,8 +8,8 @@ const loanApplicationSchema = new mongoose.Schema({
   },
   loanType: {
     type: String,
-    required: true,
-    enum: ['education', 'home', 'vehicle', 'personal', 'business']
+    required: true
+    // No enum restriction - accepts any loan type name from LoanType collection
   },
   amount: {
     type: Number,
@@ -45,9 +45,10 @@ const loanApplicationSchema = new mongoose.Schema({
   },
   interestRate: {
     type: Number,
-    required: true,
+    required: false,
     min: 0,
-    max: 100
+    max: 100,
+    default: null
   },
   status: {
     type: String,
@@ -84,6 +85,33 @@ const loanApplicationSchema = new mongoose.Schema({
   },
   blockchainLoanId: {
     type: Number
+  },
+  // Account details for disbursement
+  accountDetails: {
+    accountNumber: {
+      type: String,
+      trim: true
+    },
+    address: {
+      type: String,
+      trim: true
+    },
+    mobileNumber: {
+      type: String,
+      trim: true
+    }
+  },
+  // EMI preview (calculated before approval)
+  emiPreview: {
+    monthlyEMI: {
+      type: Number
+    },
+    totalInterest: {
+      type: Number
+    },
+    totalAmount: {
+      type: Number
+    }
   },
   createdAt: {
     type: Date,

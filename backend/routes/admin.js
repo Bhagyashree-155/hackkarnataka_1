@@ -3,6 +3,7 @@ import LoanApplication from '../models/LoanApplication.js';
 import User from '../models/User.js';
 import Repayment from '../models/Repayment.js';
 import { authenticate, isAdmin } from '../middleware/auth.js';
+import { calculateInitialReputation } from '../utils/reputation.js';
 
 const router = express.Router();
 
@@ -80,6 +81,51 @@ router.get('/stats', authenticate, isAdmin, async (req, res) => {
       totalBorrowers,
       totalVolume,
       overdueRepayments
+    });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Step 2: Off-chain verification endpoint
+// Admin can verify documents and set verification flags
+router.patch('/users/:id/verify-documents', authenticate, isAdmin, async (req, res) => {
+  try {
+    const { kycVerified, incomeVerified, educationVerified } = req.body;
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update verification flags
+    if (kycVerified !== undefined) {
+      user.kycVerified = kycVerified;
+    }
+    if (incomeVerified !== undefined) {
+      user.incomeVerified = incomeVerified;
+    }
+    if (educationVerified !== undefined) {
+      user.educationVerified = educationVerified;
+    }
+
+    // Check if all documents are verified - mark as trusted
+    const allVerified = user.kycVerified && user.incomeVerified && user.educationVerified;
+    user.trusted = allVerified;
+
+    await user.save();
+
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        kycVerified: user.kycVerified,
+        incomeVerified: user.incomeVerified,
+        educationVerified: user.educationVerified,
+        trusted: user.trusted
+      }
     });
   } catch (error) {
     res.status(400).json({ error: error.message });
