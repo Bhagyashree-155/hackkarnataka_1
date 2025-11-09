@@ -15,6 +15,7 @@ const Register = () => {
     password: '',
     confirmPassword: '',
     walletAddress: '',
+    role: 'borrower', // Default to borrower, can select admin
     // Document IDs (collected but not stored - for verification only)
     aadhaarNumber: '',
     incomeCertificateNumber: '',
@@ -68,6 +69,7 @@ const Register = () => {
           creditScore: parseInt(formData.creditScore) || 0,
           password: formData.password,
           walletAddress: formData.walletAddress || null,
+          role: formData.role, // Send selected role
           // Document IDs - sent for verification but not stored
           aadhaarNumber: formData.aadhaarNumber,
           incomeCertificateNumber: formData.incomeCertificateNumber,
@@ -99,8 +101,12 @@ const Register = () => {
         }
       }
 
-      // Redirect to dashboard
-      navigate('/dashboard')
+          // Redirect based on role
+          if (data.user?.role === 'admin') {
+            navigate('/admin-dashboard')
+          } else {
+            navigate('/borrower-dashboard')
+          }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -138,6 +144,57 @@ const Register = () => {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Role Selection - More Visible */}
+          <div className="glass-card p-6 bg-primary-500/20 border-2 border-primary-500/50 rounded-lg mb-6">
+            <label className="block text-white text-lg mb-4 font-bold">
+              👤 Register As *
+            </label>
+            <p className="text-gray-300 text-sm mb-4">
+              Select your role to continue. This determines which dashboard you'll see after registration.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setFormData({ ...formData, role: 'borrower' })}
+                className={`p-6 rounded-xl border-2 transition-all ${
+                  formData.role === 'borrower'
+                    ? 'border-primary-400 bg-primary-500/30 text-primary-200 shadow-lg shadow-primary-500/50'
+                    : 'border-white/20 bg-white/5 text-gray-400 hover:border-white/30 hover:bg-white/10'
+                }`}
+              >
+                <User className="w-8 h-8 mx-auto mb-3" />
+                <p className="font-bold text-lg">Borrower</p>
+                <p className="text-xs mt-2">Request and manage loans</p>
+                {formData.role === 'borrower' && (
+                  <p className="text-xs mt-2 text-primary-300 font-semibold">✓ Selected</p>
+                )}
+              </motion.button>
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setFormData({ ...formData, role: 'admin' })}
+                className={`p-6 rounded-xl border-2 transition-all ${
+                  formData.role === 'admin'
+                    ? 'border-primary-400 bg-primary-500/30 text-primary-200 shadow-lg shadow-primary-500/50'
+                    : 'border-white/20 bg-white/5 text-gray-400 hover:border-white/30 hover:bg-white/10'
+                }`}
+              >
+                <CreditCard className="w-8 h-8 mx-auto mb-3" />
+                <p className="font-bold text-lg">Admin</p>
+                <p className="text-xs mt-2">Approve and manage loans</p>
+                {formData.role === 'admin' && (
+                  <p className="text-xs mt-2 text-primary-300 font-semibold">✓ Selected</p>
+                )}
+              </motion.button>
+            </div>
+            <p className="text-gray-400 text-xs mt-4 text-center">
+              Currently selected: <span className="font-semibold text-primary-300 capitalize">{formData.role}</span>
+            </p>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-gray-300 text-sm mb-2">
@@ -290,12 +347,13 @@ const Register = () => {
             </p>
           </div>
 
-          {/* Document IDs Section - Step 1: Input official document IDs */}
-          <div className="border-t border-white/10 pt-6">
-            <h3 className="text-white font-semibold mb-4">Document Information (For Verification)</h3>
-            <p className="text-gray-400 text-xs mb-4">
-              These document IDs are collected for verification purposes only and will not be stored permanently.
-            </p>
+          {/* Document IDs Section - Only for Borrowers */}
+          {formData.role === 'borrower' && (
+            <div className="border-t border-white/10 pt-6">
+              <h3 className="text-white font-semibold mb-4">Document Information (For Verification)</h3>
+              <p className="text-gray-400 text-xs mb-4">
+                These document IDs are collected for verification purposes only and will not be stored permanently.
+              </p>
             
             <div className="space-y-4">
               <div>
@@ -358,6 +416,7 @@ const Register = () => {
               </div>
             </div>
           </div>
+          )}
 
           <motion.button
             whileHover={{ scale: 1.02 }}

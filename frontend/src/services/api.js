@@ -125,10 +125,12 @@ export const loansAPI = {
   /**
    * Make repayment
    */
-  makeRepayment: async (loanId, emiNumber, amount) => {
+  makeRepayment: async (loanId, data) => {
+    // data can be { emiNumber, amount } or just emiNumber and amount as separate params
+    const body = typeof data === 'object' ? data : { emiNumber: data, amount: arguments[2] };
     return apiRequest(`/api/loans/${loanId}/repay`, {
       method: 'POST',
-      body: JSON.stringify({ emiNumber, amount }),
+      body: JSON.stringify(body),
     });
   },
 };

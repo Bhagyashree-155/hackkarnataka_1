@@ -4,9 +4,10 @@ import { useWallet } from '../context/WalletContext'
 import { useState, useEffect } from 'react'
 import { loansAPI, loanTypesAPI } from '../services/api.js'
 import { calculateEMI } from '../utils/emiCalculator.js'
+import { repayLoan as repayLoanContract } from '../utils/contract.js'
 
 const Borrowers = () => {
-  const { isConnected, account } = useWallet()
+  const { isConnected, account, signer } = useWallet()
   const [showModal, setShowModal] = useState(false)
   const [selectedLoanType, setSelectedLoanType] = useState('')
   const [loanAmount, setLoanAmount] = useState('')
@@ -166,25 +167,70 @@ const Borrowers = () => {
   }
 
   const handleRepayment = async (loanId, emiNumber) => {
-    try {
-      const loan = loans.find(l => l._id === loanId)
-      if (!loan) return
+    if (!isConnected || !account) {
+      setError('Please connect your wallet to make a payment')
+      return
+    }
 
-      const response = await loansAPI.getLoan(loanId)
-      if (response.repayments && response.repayments.length > 0) {
-        const repayment = response.repayments.find(r => r.emiNumber === emiNumber && r.status !== 'paid')
-        if (repayment) {
-          const payResponse = await loansAPI.makeRepayment(loanId, emiNumber, repayment.amount)
-          if (payResponse.success) {
-            setSuccess('Repayment successful!')
-            await fetchLoans()
-            setSelectedLoanForRepayment(null)
+    setSubmitting(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      // Get loan details to calculate repayment amount
+      const loan = loans.find(l => (l._id || l.id) === loanId)
+      if (!loan) {
+        throw new Error('Loan not found')
+      }
+
+      // Calculate repayment amount (EMI amount)
+      const repaymentAmount = loan.emiPreview?.monthlyEMI || loan.amount
+      
+      // If loan has blockchainLoanId, use smart contract
+      if (loan.blockchainLoanId !== undefined && loan.blockchainLoanId !== null) {
+        // Use smart contract for repayment
+        if (!signer) {
+          throw new Error('Wallet signer not available')
+        }
+
+        // Convert repayment amount to ETH (assuming EMI is in rupees, convert to ETH)
+        // For now, use loan amount in ETH directly
+        const ethAmount = loan.amount.toString()
+        
+        setSuccess('Processing payment on blockchain...')
+        const tx = await repayLoanContract(signer, loan.blockchainLoanId, ethAmount)
+        await tx.wait()
+        setSuccess('Payment successful! Transaction: ' + tx.hash)
+      } else {
+        // Fallback to backend API repayment
+        // Get the first unpaid EMI
+        const loanDetails = await loansAPI.getLoan(loanId)
+        let nextEmiNumber = 1
+        
+        if (loanDetails.repayments && loanDetails.repayments.length > 0) {
+          const unpaidRepayment = loanDetails.repayments.find(r => r.status === 'pending' || r.status === 'overdue')
+          if (unpaidRepayment) {
+            nextEmiNumber = unpaidRepayment.emiNumber
           }
         }
+        
+        const response = await loansAPI.makeRepayment(loanId, { 
+          emiNumber: nextEmiNumber, 
+          amount: repaymentAmount 
+        })
+        if (response.success) {
+          setSuccess('Payment processed successfully!')
+        }
       }
+
+      // Refresh loans
+      await fetchLoans()
+      setSelectedLoanForRepayment(null)
     } catch (err) {
-      console.error('Error making repayment:', err)
-      setError(err.message || 'Failed to process repayment')
+      console.error('Error processing repayment:', err)
+      setError(err.message || 'Failed to process payment')
+    } finally {
+      setSubmitting(false)
     }
   }
 

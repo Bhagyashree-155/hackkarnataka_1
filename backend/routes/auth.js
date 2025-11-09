@@ -11,7 +11,7 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   try {
     const { 
-      name, age, citizenship, email, monthlyIncome, creditScore, password, walletAddress,
+      name, age, citizenship, email, monthlyIncome, creditScore, password, walletAddress, role,
       // Document IDs (collected but not stored - for verification only)
       aadhaarNumber, incomeCertificateNumber, educationCertificateNumber, studentRegistrationNumber
     } = req.body;
@@ -33,14 +33,21 @@ router.post('/register', async (req, res) => {
     // Hash password
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // Verify documents against hardcoded lists
-    // Student registration is optional
-    const studentRegNumber = studentRegistrationNumber || educationCertificateNumber || '';
-    const verificationResult = verifyAllDocuments(
-      aadhaarNumber,
-      incomeCertificateNumber,
-      studentRegNumber
-    );
+    // Determine user role
+    const userRole = role === 'admin' ? 'admin' : 'borrower';
+
+    // Verify documents only for borrowers (admin doesn't need document verification)
+    let verificationResult = null;
+    let studentRegNumber = '';
+    if (userRole === 'borrower') {
+      // Student registration is optional
+      studentRegNumber = studentRegistrationNumber || educationCertificateNumber || '';
+      verificationResult = verifyAllDocuments(
+        aadhaarNumber,
+        incomeCertificateNumber,
+        studentRegNumber
+      );
+    }
 
     // Note: Document IDs are NOT stored in the database for privacy - only verification status is stored
 
@@ -54,14 +61,18 @@ router.post('/register', async (req, res) => {
       creditScore: creditScore || 0,
       passwordHash,
       walletAddress: walletAddress ? walletAddress.toLowerCase().trim() : null,
-      role: 'borrower',
-      // Set verification flags based on document verification
-      kycVerified: verificationResult.aadhaar.verified,
-      incomeVerified: verificationResult.income.verified,
+      role: userRole,
+      // Set verification flags based on document verification (only for borrowers)
+      kycVerified: userRole === 'borrower' ? (verificationResult?.aadhaar.verified || false) : true,
+      incomeVerified: userRole === 'borrower' ? (verificationResult?.income.verified || false) : true,
       // Education is optional - if not provided, defaults to true (verified)
-      educationVerified: studentRegNumber ? verificationResult.education.verified : true,
-      // Trusted if required documents (Aadhaar and Income) are verified
-      trusted: verificationResult.aadhaar.verified && verificationResult.income.verified
+      educationVerified: userRole === 'borrower' 
+        ? (studentRegNumber ? (verificationResult?.education.verified || false) : true)
+        : true,
+      // Trusted if required documents (Aadhaar and Income) are verified, or if admin
+      trusted: userRole === 'admin' 
+        ? true 
+        : (verificationResult?.aadhaar.verified && verificationResult?.income.verified)
     });
 
     await user.save();
@@ -129,8 +140,12 @@ router.post('/login', async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role,
-        walletAddress: user.walletAddress
+        role: user.role, // Include role in response
+        walletAddress: user.walletAddress,
+        kycVerified: user.kycVerified,
+        incomeVerified: user.incomeVerified,
+        educationVerified: user.educationVerified,
+        trusted: user.trusted
       }
     });
   } catch (error) {

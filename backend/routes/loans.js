@@ -264,7 +264,11 @@ router.patch('/:id/approve', authenticate, isAdmin, async (req, res) => {
 // Make repayment
 router.post('/:id/repay', authenticate, async (req, res) => {
   try {
-    const { emiNumber, amount } = req.body;
+    // Extract emiNumber and amount from request body
+    // Ensure proper type conversion
+    const emiNumber = req.body.emiNumber ? (typeof req.body.emiNumber === 'number' ? req.body.emiNumber : parseInt(req.body.emiNumber, 10)) : null;
+    const amount = req.body.amount ? (typeof req.body.amount === 'number' ? req.body.amount : parseFloat(req.body.amount)) : null;
+
     const loan = await LoanApplication.findById(req.params.id);
 
     if (!loan) {
@@ -275,10 +279,22 @@ router.post('/:id/repay', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    const repayment = await Repayment.findOne({
-      loanId: loan._id,
-      emiNumber: emiNumber || { $gte: 1 }
-    }).sort({ emiNumber: 1 });
+    // Find the next unpaid repayment
+    // If emiNumber is provided and is a valid number, use it; otherwise find the first unpaid one
+    let repayment;
+    if (emiNumber && !isNaN(emiNumber) && emiNumber > 0) {
+      repayment = await Repayment.findOne({
+        loanId: loan._id,
+        emiNumber: Number(emiNumber), // Ensure it's a number
+        status: { $in: ['pending', 'overdue'] }
+      });
+    } else {
+      // Find the first unpaid repayment
+      repayment = await Repayment.findOne({
+        loanId: loan._id,
+        status: { $in: ['pending', 'overdue'] }
+      }).sort({ emiNumber: 1 });
+    }
 
     if (!repayment) {
       return res.status(404).json({ error: 'Repayment not found' });
@@ -293,7 +309,9 @@ router.post('/:id/repay', authenticate, async (req, res) => {
       penalty = repayment.amount * 0.02; // 2% of EMI
     }
 
-    repayment.paidAmount = amount || repayment.amount;
+    // Ensure amount is a number
+    const paidAmount = (amount && !isNaN(amount)) ? Number(amount) : repayment.amount;
+    repayment.paidAmount = paidAmount;
     repayment.paidDate = now;
     repayment.daysDelayed = daysDelayed;
     repayment.penalty = penalty;

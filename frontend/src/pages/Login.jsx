@@ -34,8 +34,12 @@ const Login = () => {
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
 
-      // Redirect to dashboard
-      navigate('/dashboard')
+      // Redirect based on role
+      if (data.user?.role === 'admin') {
+        navigate('/admin-dashboard')
+      } else {
+        navigate('/borrower-dashboard')
+      }
     } catch (err) {
       setError(err.message)
     } finally {

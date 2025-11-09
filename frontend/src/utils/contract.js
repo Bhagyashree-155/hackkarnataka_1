@@ -23,7 +23,7 @@ export const LOAN_CONTRACT_ABI = [
 // Contract address - Update this after deploying
 // This should be set from environment variables or deployment output
 // Default to localhost deployment address
-export const LOAN_CONTRACT_ADDRESS = process.env.VITE_CONTRACT_ADDRESS || '0x5FbDB2315678afecb367f032d93F642f64180aa3'
+export const LOAN_CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || '0x5FbDB2315678afecb367f032d93F642f64180aa3'
 
 /**
  * Get contract instance
