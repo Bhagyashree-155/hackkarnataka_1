@@ -4,6 +4,7 @@ import Repayment from '../models/Repayment.js';
 import Document from '../models/Document.js';
 import User from '../models/User.js';
 import LoanType from '../models/LoanType.js';
+import Notification from '../models/Notification.js';
 import { authenticate, isAdmin } from '../middleware/auth.js';
 import { checkEligibility, checkSuspiciousActivity } from '../utils/eligibility.js';
 import { generateEMISchedule, calculateEMI, calculateTotalInterest } from '../utils/emiCalculator.js';
@@ -28,6 +29,41 @@ router.get('/', authenticate, async (req, res) => {
       .populate('approvedBy', 'name email')
       .sort({ createdAt: -1 });
 
+    // For each loan, calculate remaining amount and get first unpaid EMI
+    for (const loan of loans) {
+      if (loan.status === 'active' || loan.status === 'approved' || loan.status === 'completed') {
+        const repayments = await Repayment.find({ loanId: loan._id }).sort({ emiNumber: 1 });
+        const totalRepaid = repayments
+          .filter(r => r.status === 'paid')
+          .reduce((sum, r) => sum + (r.paidAmount || r.amount), 0);
+        
+        const totalLoanAmount = loan.emiPreview?.totalAmount || (loan.amount + (loan.amount * (loan.interestRate || 0) / 100 * Math.ceil(loan.tenure / 30) / 12));
+        
+        // Update loan document in database
+        loan.repaidAmount = totalRepaid;
+        loan.remainingAmount = Math.max(0, totalLoanAmount - totalRepaid);
+        
+        // Save to ensure it's persisted
+        if (loan.isModified('repaidAmount') || loan.isModified('remainingAmount')) {
+          await loan.save();
+        }
+        
+        // Get first unpaid EMI amount
+        const firstUnpaidEMI = repayments.find(r => r.status === 'pending' || r.status === 'overdue');
+        if (firstUnpaidEMI) {
+          loan.nextEmiAmount = firstUnpaidEMI.amount;
+        } else if (repayments.length > 0) {
+          // If all are paid, use the first EMI amount from schedule
+          loan.nextEmiAmount = repayments[0].amount;
+        } else {
+          // Calculate EMI if no repayments exist yet
+          const tenureMonths = Math.ceil(loan.tenure / 30);
+          const { monthlyEMI } = calculateEMI(loan.amount, loan.interestRate || 0, tenureMonths);
+          loan.nextEmiAmount = monthlyEMI;
+        }
+      }
+    }
+
     res.json({ loans, count: loans.length });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -50,17 +86,43 @@ router.get('/:id', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    // Get repayments
-    const repayments = await Repayment.find({ loanId: loan._id }).sort({ emiNumber: 1 });
-    
-    // Get documents
-    const documents = await Document.find({ loanId: loan._id });
+        // Get repayments
+        const repayments = await Repayment.find({ loanId: loan._id }).sort({ emiNumber: 1 });
 
-    res.json({
-      loan,
-      repayments,
-      documents
-    });
+        // Calculate remaining amount and next EMI
+        if (loan.status === 'active' || loan.status === 'approved' || loan.status === 'completed') {
+          const totalRepaid = repayments
+            .filter(r => r.status === 'paid')
+            .reduce((sum, r) => sum + (r.paidAmount || r.amount), 0);
+          
+          const totalLoanAmount = loan.emiPreview?.totalAmount || (loan.amount + (loan.amount * (loan.interestRate || 0) / 100 * Math.ceil(loan.tenure / 30) / 12));
+          
+          loan.repaidAmount = totalRepaid;
+          loan.remainingAmount = Math.max(0, totalLoanAmount - totalRepaid);
+          
+          // Get first unpaid EMI amount
+          const firstUnpaidEMI = repayments.find(r => r.status === 'pending' || r.status === 'overdue');
+          if (firstUnpaidEMI) {
+            loan.nextEmiAmount = firstUnpaidEMI.amount;
+          } else if (repayments.length > 0) {
+            // If all paid, show the EMI amount from the schedule
+            loan.nextEmiAmount = repayments[0].amount;
+          } else {
+            // Calculate EMI if no repayments exist yet
+            const tenureMonths = Math.ceil(loan.tenure / 30);
+            const { monthlyEMI } = calculateEMI(loan.amount, loan.interestRate || 0, tenureMonths);
+            loan.nextEmiAmount = monthlyEMI;
+          }
+        }
+
+        // Get documents
+        const documents = await Document.find({ loanId: loan._id });
+
+        res.json({
+          loan,
+          repayments,
+          documents
+        });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
@@ -226,6 +288,13 @@ router.patch('/:id/approve', authenticate, isAdmin, async (req, res) => {
         new Date()
       );
 
+      // Calculate total amount (principal + interest)
+      const totalAmount = loan.emiPreview?.totalAmount || (loan.amount + (loan.amount * loan.interestRate / 100 * tenureMonths / 12));
+      
+      // Initialize repayment tracking
+      loan.repaidAmount = 0;
+      loan.remainingAmount = totalAmount;
+
       // Create repayment records
       for (const emi of emiSchedule) {
         const repayment = new Repayment({
@@ -319,20 +388,81 @@ router.post('/:id/repay', authenticate, async (req, res) => {
 
     await repayment.save();
 
+    // Update loan's repaid amount
+    const allRepayments = await Repayment.find({ loanId: loan._id }).sort({ emiNumber: 1 });
+    const totalRepaid = allRepayments
+      .filter(r => r.status === 'paid')
+      .reduce((sum, r) => sum + (r.paidAmount || r.amount), 0);
+    
+    // Calculate total loan amount (principal + interest)
+    const totalLoanAmount = loan.emiPreview?.totalAmount || (loan.amount + (loan.amount * (loan.interestRate || 0) / 100 * Math.ceil(loan.tenure / 30) / 12));
+    
+    loan.repaidAmount = totalRepaid;
+    loan.remainingAmount = Math.max(0, totalLoanAmount - totalRepaid);
+    
+    // Reload loan to get fresh data
+    await loan.save();
+    await loan.populate('userId', 'name email');
+    await loan.populate('approvedBy', 'name email');
+
     // Check if all repayments are paid
     const remainingRepayments = await Repayment.countDocuments({
       loanId: loan._id,
       status: { $in: ['pending', 'overdue'] }
     });
 
-    if (remainingRepayments === 0) {
+    const isCompleted = remainingRepayments === 0;
+    if (isCompleted) {
       loan.status = 'completed';
-      await loan.save();
     }
+
+    await loan.save();
+
+    // Get lender (admin who approved the loan)
+    const lender = loan.approvedBy ? await User.findById(loan.approvedBy) : null;
+
+    // Create notification for lender for each EMI payment
+    if (lender) {
+      const notification = new Notification({
+        userId: lender._id,
+        loanId: loan._id,
+        type: isCompleted ? 'loan_completed' : 'emi_paid',
+        title: isCompleted 
+          ? 'Loan Fully Repaid' 
+          : `EMI #${repayment.emiNumber} Paid`,
+        message: isCompleted
+          ? `Borrower ${loan.userId?.name || 'Unknown'} has fully repaid loan #${loan._id.toString().slice(-6)}. Total amount: ${totalLoanAmount.toFixed(2)} ETH`
+          : `Borrower ${loan.userId?.name || 'Unknown'} paid EMI #${repayment.emiNumber} of ${repayment.amount.toFixed(2)} ETH for loan #${loan._id.toString().slice(-6)}. Remaining: ${loan.remainingAmount.toFixed(2)} ETH`
+      });
+      await notification.save();
+    }
+
+    // Get updated loan with all fields
+    const updatedLoan = await LoanApplication.findById(loan._id)
+      .populate('userId', 'name email')
+      .populate('approvedBy', 'name email');
+    
+    // Calculate next EMI amount
+    const remainingRepaymentsList = await Repayment.find({
+      loanId: loan._id,
+      status: { $in: ['pending', 'overdue'] }
+    }).sort({ emiNumber: 1 });
+    
+    const nextEmiAmount = remainingRepaymentsList.length > 0 
+      ? remainingRepaymentsList[0].amount 
+      : (updatedLoan.emiPreview?.monthlyEMI || 0);
 
     res.json({
       success: true,
-      repayment
+      repayment,
+      loan: {
+        _id: updatedLoan._id,
+        repaidAmount: updatedLoan.repaidAmount,
+        remainingAmount: updatedLoan.remainingAmount,
+        status: updatedLoan.status,
+        nextEmiAmount: nextEmiAmount
+      },
+      isCompleted
     });
   } catch (error) {
     res.status(400).json({ error: error.message });

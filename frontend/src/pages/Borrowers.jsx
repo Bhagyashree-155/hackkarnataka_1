@@ -183,8 +183,19 @@ const Borrowers = () => {
         throw new Error('Loan not found')
       }
 
-      // Calculate repayment amount (EMI amount)
-      const repaymentAmount = loan.emiPreview?.monthlyEMI || loan.amount
+      // Get loan details to get the actual EMI amount
+      const loanDetails = await loansAPI.getLoan(loanId)
+      
+      // Find the first unpaid EMI to get the exact amount
+      let repaymentAmount = loan.emiPreview?.monthlyEMI || loan.amount
+      if (loanDetails.repayments && loanDetails.repayments.length > 0) {
+        const unpaidRepayment = loanDetails.repayments.find(r => r.status === 'pending' || r.status === 'overdue')
+        if (unpaidRepayment) {
+          repaymentAmount = unpaidRepayment.amount
+        }
+      } else if (loanDetails.loan?.nextEmiAmount) {
+        repaymentAmount = loanDetails.loan.nextEmiAmount
+      }
       
       // If loan has blockchainLoanId, use smart contract
       if (loan.blockchainLoanId !== undefined && loan.blockchainLoanId !== null) {
@@ -204,13 +215,13 @@ const Borrowers = () => {
       } else {
         // Fallback to backend API repayment
         // Get the first unpaid EMI
-        const loanDetails = await loansAPI.getLoan(loanId)
         let nextEmiNumber = 1
         
         if (loanDetails.repayments && loanDetails.repayments.length > 0) {
           const unpaidRepayment = loanDetails.repayments.find(r => r.status === 'pending' || r.status === 'overdue')
           if (unpaidRepayment) {
             nextEmiNumber = unpaidRepayment.emiNumber
+            repaymentAmount = unpaidRepayment.amount // Use the exact EMI amount from repayment record
           }
         }
         
@@ -219,12 +230,24 @@ const Borrowers = () => {
           amount: repaymentAmount 
         })
         if (response.success) {
-          setSuccess('Payment processed successfully!')
+          if (response.isCompleted) {
+            const repaidAmount = response.loan?.repaidAmount || response.repaidAmount || 0
+            setSuccess(`Payment successful! Loan fully repaid. Total repaid: ${repaidAmount.toFixed(2)} ETH`)
+          } else {
+            const remainingAmount = response.loan?.remainingAmount || response.remainingAmount || 0
+            setSuccess(`Payment successful! EMI #${nextEmiNumber} paid. Remaining: ${remainingAmount.toFixed(2)} ETH`)
+          }
         }
       }
 
-      // Refresh loans
+      // Refresh loans to get updated data
       await fetchLoans()
+      
+      // Small delay to ensure backend has processed
+      setTimeout(() => {
+        fetchLoans()
+      }, 500)
+      
       setSelectedLoanForRepayment(null)
     } catch (err) {
       console.error('Error processing repayment:', err)
@@ -389,9 +412,37 @@ const Borrowers = () => {
                     <p className="text-white font-semibold">{loan.loanType || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="text-gray-400 text-sm mb-1">Amount</p>
-                    <p className="text-white font-semibold">{loan.amount} ETH</p>
+                    <p className="text-gray-400 text-sm mb-1">Total Amount</p>
+                    <p className="text-white font-semibold text-lg">
+                      {loan.emiPreview?.totalAmount?.toFixed(2) || loan.amount?.toFixed(2) || '0.00'} ETH
+                    </p>
                   </div>
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Repaid Amount</p>
+                    <p className="text-green-400 font-semibold text-lg">
+                      {loan.repaidAmount !== undefined && loan.repaidAmount !== null ? loan.repaidAmount.toFixed(2) : '0.00'} ETH
+                    </p>
+                    <p className="text-gray-500 text-xs mt-1">
+                      {loan.emiPreview?.totalAmount 
+                        ? `${Math.round(((loan.repaidAmount !== undefined && loan.repaidAmount !== null ? loan.repaidAmount : 0) / loan.emiPreview.totalAmount * 100))}% paid`
+                        : '0% paid'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">Remaining Amount</p>
+                    <p className="text-yellow-400 font-semibold text-lg">
+                      {loan.remainingAmount !== undefined && loan.remainingAmount !== null 
+                        ? loan.remainingAmount.toFixed(2) 
+                        : (loan.emiPreview?.totalAmount?.toFixed(2) || loan.amount?.toFixed(2) || '0.00')} ETH
+                    </p>
+                    <p className="text-gray-500 text-xs mt-1">
+                      {loan.emiPreview?.totalAmount 
+                        ? `${Math.round(((loan.remainingAmount !== undefined && loan.remainingAmount !== null ? loan.remainingAmount : (loan.emiPreview?.totalAmount || loan.amount)) / loan.emiPreview.totalAmount * 100))}% remaining`
+                        : '100% remaining'}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4 mt-4">
                   <div>
                     <p className="text-gray-400 text-sm mb-1">Term</p>
                     <p className="text-white font-semibold">{loan.tenure} days</p>
@@ -402,37 +453,36 @@ const Borrowers = () => {
                       {loan.interestRate ? `${loan.interestRate}%` : loanType ? `${loanType.interestRate}%` : 'Pending'}
                     </p>
                   </div>
-                </div>
-                {loan.emiPreview && loan.emiPreview.monthlyEMI && (
-                  <div className="mt-4 p-4 bg-primary-500/10 rounded-lg border border-primary-500/20">
-                    <p className="text-gray-400 text-sm mb-2">EMI Preview</p>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <p className="text-gray-400 text-xs">Monthly EMI</p>
-                        <p className="text-white font-semibold">{loan.emiPreview.monthlyEMI.toFixed(2)} ETH</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-xs">Total Interest</p>
-                        <p className="text-white font-semibold">{loan.emiPreview.totalInterest.toFixed(2)} ETH</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400 text-xs">Total Amount</p>
-                        <p className="text-white font-semibold">{loan.emiPreview.totalAmount.toFixed(2)} ETH</p>
-                      </div>
-                    </div>
+                  <div>
+                    <p className="text-gray-400 text-sm mb-1">EMI Amount</p>
+                    <p className="text-primary-300 font-semibold">
+                      {loan.nextEmiAmount?.toFixed(2) || loan.emiPreview?.monthlyEMI?.toFixed(2) || 'N/A'} ETH
+                    </p>
                   </div>
-                )}
-                {(loan.status === 'active' || loan.status === 'approved') && (
-                  <div className="mt-4">
-                    <motion.button
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => setSelectedLoanForRepayment(loan)}
-                      className="glass-card px-4 py-2 bg-green-500/20 text-green-400 hover:bg-green-500/30 flex items-center space-x-2"
-                    >
-                      <DollarSign className="w-4 h-4" />
-                      <span>Make Payment</span>
-                    </motion.button>
+                </div>
+                {/* Repayment Status */}
+                {(loan.status === 'approved' || loan.status === 'active' || loan.status === 'completed') && (
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    {loan.status === 'completed' ? (
+                      <div className="text-center">
+                        <p className="text-green-400 text-lg font-semibold mb-2">
+                          ✅ Loan Fully Repaid
+                        </p>
+                        <p className="text-gray-400 text-sm">
+                          Total Repaid: {(loan.repaidAmount !== undefined && loan.repaidAmount !== null ? loan.repaidAmount.toFixed(2) : '0.00')} ETH
+                        </p>
+                      </div>
+                    ) : (
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => setSelectedLoanForRepayment(loan)}
+                        className="w-full glass-card p-3 bg-primary-500/30 text-primary-300 hover:bg-primary-500/40 flex items-center justify-center space-x-2"
+                      >
+                        <DollarSign className="w-5 h-5" />
+                        <span>Make Payment</span>
+                      </motion.button>
+                    )}
                   </div>
                 )}
               </motion.div>
@@ -453,17 +503,29 @@ const Borrowers = () => {
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="glass-card p-8 max-w-2xl w-full my-8"
+            className="glass-card p-6 md:p-8 max-w-2xl w-full my-auto"
+            style={{ maxHeight: 'calc(100vh - 2rem)' }}
           >
-            <h2 className="text-2xl font-bold text-white mb-6">
-              Request a Loan
-            </h2>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-white">
+                Request a Loan
+              </h2>
+              <button
+                onClick={() => !submitting && setShowModal(false)}
+                className="text-gray-400 hover:text-white text-2xl leading-none"
+                aria-label="Close"
+                disabled={submitting}
+              >
+                ×
+              </button>
+            </div>
             {error && (
               <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 text-red-400 text-sm rounded">
                 {error}
               </div>
             )}
-            <form onSubmit={handleSubmitLoan} className="space-y-4">
+            <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 12rem)' }}>
+              <form onSubmit={handleSubmitLoan} className="space-y-4">
               {/* Loan Type Selection */}
               <div>
                 <label className="block text-gray-300 text-sm mb-2">
@@ -523,22 +585,27 @@ const Borrowers = () => {
                 <label className="block text-gray-300 text-sm mb-2">
                   Loan Term (days) *
                 </label>
-                <input
-                  type="number"
-                  min="30"
-                  max="3650"
-                  value={loanTerm}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === '' || (parseInt(val) >= 30 && parseInt(val) <= 3650)) {
-                      setLoanTerm(val);
-                    }
-                  }}
-                  className="w-full glass-card p-3 text-white bg-white/5 border border-white/20 rounded-lg focus:outline-none focus:border-primary-400"
-                  required
-                  disabled={submitting}
-                  placeholder="Enter days (30 - 3650)"
-                />
+                    <input
+                      type="number"
+                      min="30"
+                      max="3650"
+                      value={loanTerm}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        // Allow typing - only validate on blur or submit
+                        setLoanTerm(val);
+                      }}
+                      onBlur={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (val && (val < 30 || val > 3650)) {
+                          setError('Term must be between 30 and 3650 days');
+                        }
+                      }}
+                      className="w-full glass-card p-3 text-white bg-white/5 border border-white/20 rounded-lg focus:outline-none focus:border-primary-400"
+                      required
+                      disabled={submitting}
+                      placeholder="Enter days (30 - 3650)"
+                    />
                 {loanTerm && (parseInt(loanTerm) < 30 || parseInt(loanTerm) > 3650) && (
                   <p className="text-red-400 text-xs mt-1">Term must be between 30 and 3650 days</p>
                 )}
@@ -647,6 +714,7 @@ const Borrowers = () => {
                 </motion.button>
               </div>
             </form>
+            </div>
           </motion.div>
         </motion.div>
       )}
@@ -656,45 +724,87 @@ const Borrowers = () => {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
           onClick={() => setSelectedLoanForRepayment(null)}
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             onClick={(e) => e.stopPropagation()}
-            className="glass-card p-8 max-w-lg w-full max-h-[90vh] overflow-y-auto"
+            className="glass-card p-6 md:p-8 max-w-lg w-full my-auto"
+            style={{ maxHeight: 'calc(100vh - 2rem)' }}
           >
-            <h2 className="text-2xl font-bold text-white mb-6">
-              Make Payment
-            </h2>
-            <p className="text-gray-400 mb-4">
-              Loan: {selectedLoanForRepayment.amount} ETH
-            </p>
-            <div className="space-y-2">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-white">
+                Make Payment
+              </h2>
+              <button
+                onClick={() => setSelectedLoanForRepayment(null)}
+                className="text-gray-400 hover:text-white text-2xl leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="space-y-4 mb-6">
+              <div className="p-4 bg-white/5 rounded-lg">
+                <p className="text-gray-400 text-sm mb-1">Loan Type</p>
+                <p className="text-white font-semibold">{selectedLoanForRepayment.loanType || 'N/A'}</p>
+              </div>
+              <div className="p-4 bg-white/5 rounded-lg">
+                <p className="text-gray-400 text-sm mb-1">Total Amount</p>
+                <p className="text-white font-semibold text-lg">
+                  {selectedLoanForRepayment.emiPreview?.totalAmount?.toFixed(2) || selectedLoanForRepayment.amount?.toFixed(2) || '0.00'} ETH
+                </p>
+              </div>
+              <div className="p-4 bg-white/5 rounded-lg">
+                <p className="text-gray-400 text-sm mb-1">EMI Amount to Pay</p>
+                <p className="text-primary-300 font-semibold text-lg">
+                  {selectedLoanForRepayment.nextEmiAmount?.toFixed(2) || selectedLoanForRepayment.emiPreview?.monthlyEMI?.toFixed(2) || 'N/A'} ETH
+                </p>
+              </div>
+              <div className="p-4 bg-white/5 rounded-lg">
+                <p className="text-gray-400 text-sm mb-1">Remaining Amount</p>
+                <p className="text-yellow-400 font-semibold text-lg">
+                  {selectedLoanForRepayment.remainingAmount !== undefined && selectedLoanForRepayment.remainingAmount !== null
+                    ? selectedLoanForRepayment.remainingAmount.toFixed(2)
+                    : (selectedLoanForRepayment.emiPreview?.totalAmount?.toFixed(2) || selectedLoanForRepayment.amount?.toFixed(2) || '0.00')} ETH
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2 mb-6">
               <p className="text-gray-300 text-sm">
-                Payment functionality will be integrated with your wallet.
-              </p>
-              <p className="text-gray-400 text-xs">
                 This will process the next EMI payment for this loan.
               </p>
+              <p className="text-gray-400 text-xs">
+                Payment will be deducted from your connected wallet.
+              </p>
             </div>
-            <div className="flex space-x-4 mt-6">
+            <div className="flex flex-col sm:flex-row gap-3">
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={() => setSelectedLoanForRepayment(null)}
-                className="flex-1 glass-card p-3 text-gray-300 hover:text-white"
+                className="flex-1 glass-card p-3 text-gray-300 hover:text-white border border-white/20"
+                disabled={submitting}
               >
-                Close
+                Cancel
               </motion.button>
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => handleRepayment(selectedLoanForRepayment._id, 1)}
-                className="flex-1 glass-card p-3 bg-green-500/30 text-green-400 hover:bg-green-500/40"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleRepayment(selectedLoanForRepayment._id || selectedLoanForRepayment.id, 1)}
+                className="flex-1 glass-card p-3 bg-green-500/30 text-green-400 hover:bg-green-500/40 border border-green-500/50"
+                disabled={submitting}
               >
-                Process Payment
+                {submitting ? (
+                  <span className="flex items-center justify-center">
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </span>
+                ) : (
+                  'Process Payment'
+                )}
               </motion.button>
             </div>
           </motion.div>

@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion'
-import { CheckCircle, XCircle, Eye, Loader2 } from 'lucide-react'
+import { CheckCircle, XCircle, Eye, Loader2, Bell } from 'lucide-react'
 import { useWallet } from '../context/WalletContext'
 import { useState, useEffect } from 'react'
-import { loansAPI } from '../services/api.js'
+import { loansAPI, notificationsAPI } from '../services/api.js'
 
 const Lenders = () => {
   const { isConnected } = useWallet()
@@ -12,26 +12,54 @@ const Lenders = () => {
   const [processing, setProcessing] = useState(null)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  const [notifications, setNotifications] = useState([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [showNotifications, setShowNotifications] = useState(false)
 
-  // Fetch pending loans on component mount
+  // Fetch pending loans and notifications on component mount
   useEffect(() => {
     fetchPendingLoans()
+    fetchNotifications()
+    // Poll for new notifications every 10 seconds
+    const interval = setInterval(() => {
+      fetchNotifications()
+    }, 10000)
+    return () => clearInterval(interval)
   }, [])
 
-  const fetchPendingLoans = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await loansAPI.getAllLoans({ status: 'pending' })
-      setLoanRequests(response.loans || [])
-    } catch (err) {
-      console.error('Error fetching pending loans:', err)
-      setError(err.message || 'Failed to fetch loan requests')
-      setLoanRequests([])
-    } finally {
-      setLoading(false)
-    }
-  }
+      const fetchPendingLoans = async () => {
+        try {
+          setLoading(true)
+          setError(null)
+          const response = await loansAPI.getAllLoans({ status: 'pending' })
+          setLoanRequests(response.loans || [])
+        } catch (err) {
+          console.error('Error fetching pending loans:', err)
+          setError(err.message || 'Failed to fetch loan requests')
+          setLoanRequests([])
+        } finally {
+          setLoading(false)
+        }
+      }
+
+      const fetchNotifications = async () => {
+        try {
+          const response = await notificationsAPI.getAllNotifications()
+          setNotifications(response.notifications || [])
+          setUnreadCount(response.unreadCount || 0)
+        } catch (err) {
+          console.error('Error fetching notifications:', err)
+        }
+      }
+
+      const markNotificationAsRead = async (notificationId) => {
+        try {
+          await notificationsAPI.markAsRead(notificationId)
+          await fetchNotifications()
+        } catch (err) {
+          console.error('Error marking notification as read:', err)
+        }
+      }
 
   const handleApprove = async (loan) => {
     if (!window.confirm(`Are you sure you want to approve this ${loan.loanType || 'loan'}?`)) {
@@ -135,12 +163,27 @@ const Lenders = () => {
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
+        className="mb-8 flex items-center justify-between"
       >
-        <h1 className="text-4xl font-bold text-white mb-2">Lenders</h1>
-        <p className="text-gray-400">
-          Review and manage loan requests from borrowers
-        </p>
+        <div>
+          <h1 className="text-4xl font-bold text-white mb-2">Lenders</h1>
+          <p className="text-gray-400">
+            Review and manage loan requests from borrowers
+          </p>
+        </div>
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setShowNotifications(!showNotifications)}
+          className="glass-card p-3 relative"
+        >
+          <Bell className="w-6 h-6 text-primary-400" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+              {unreadCount}
+            </span>
+          )}
+        </motion.button>
       </motion.div>
 
       {!isConnected && (
@@ -174,6 +217,55 @@ const Lenders = () => {
           className="glass-card p-4 mb-6 bg-red-500/20 border border-red-500/50 text-red-400"
         >
           {error}
+        </motion.div>
+      )}
+
+      {/* Notifications Panel */}
+      {showNotifications && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card p-6 mb-6 max-h-96 overflow-y-auto"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-white">Notifications</h2>
+            <button
+              onClick={() => setShowNotifications(false)}
+              className="text-gray-400 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+          {notifications.length === 0 ? (
+            <p className="text-gray-400 text-center py-4">No notifications</p>
+          ) : (
+            <div className="space-y-3">
+              {notifications.map((notif) => (
+                <div
+                  key={notif._id}
+                  className={`p-3 rounded-lg border cursor-pointer ${
+                    notif.read 
+                      ? 'bg-white/5 border-white/10' 
+                      : 'bg-primary-500/20 border-primary-500/50'
+                  }`}
+                  onClick={() => !notif.read && markNotificationAsRead(notif._id)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="text-white font-semibold">{notif.title}</p>
+                      <p className="text-gray-300 text-sm mt-1">{notif.message}</p>
+                      <p className="text-gray-400 text-xs mt-2">
+                        {formatDateTimeIST(notif.createdAt)}
+                      </p>
+                    </div>
+                    {!notif.read && (
+                      <span className="ml-2 w-2 h-2 bg-primary-400 rounded-full"></span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </motion.div>
       )}
 
@@ -235,24 +327,47 @@ const Lenders = () => {
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-400 text-sm mb-1">Amount</p>
+                    <p className="text-gray-400 text-sm mb-1">Total Amount</p>
                     <p className="text-white font-semibold text-lg">
-                      {loan.amount} ETH
+                      {loan.emiPreview?.totalAmount?.toFixed(2) || loan.amount} ETH
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-400 text-sm mb-1">Term</p>
-                    <p className="text-white font-semibold text-lg">
-                      {loan.tenure} days
+                    <p className="text-gray-400 text-sm mb-1">Repaid</p>
+                    <p className="text-green-400 font-semibold text-lg">
+                      {loan.repaidAmount?.toFixed(2) || '0.00'} ETH
                     </p>
                   </div>
                   <div>
-                    <p className="text-gray-400 text-sm mb-1">Interest Rate</p>
-                    <p className="text-white font-semibold text-lg">
-                      {loan.interestRate ? `${loan.interestRate}%` : 'Will use loan type rate'}
+                    <p className="text-gray-400 text-sm mb-1">Remaining</p>
+                    <p className="text-yellow-400 font-semibold text-lg">
+                      {loan.remainingAmount?.toFixed(2) || (loan.emiPreview?.totalAmount?.toFixed(2) || loan.amount)} ETH
                     </p>
                   </div>
                 </div>
+                {(loan.status === 'active' || loan.status === 'completed') && (
+                  <div className="mb-6 p-4 glass-card bg-white/5 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-gray-400 text-sm">Repayment Progress</p>
+                      <p className="text-white font-semibold">
+                        {loan.emiPreview?.totalAmount ? Math.round(((loan.repaidAmount || 0) / loan.emiPreview.totalAmount * 100)) : 0}%
+                      </p>
+                    </div>
+                    <div className="w-full bg-white/10 rounded-full h-2">
+                      <div 
+                        className="bg-green-400 h-2 rounded-full transition-all"
+                        style={{ 
+                          width: `${loan.emiPreview?.totalAmount ? Math.min(100, ((loan.repaidAmount || 0) / loan.emiPreview.totalAmount * 100)) : 0}%` 
+                        }}
+                      ></div>
+                    </div>
+                    {loan.status === 'completed' && (
+                      <p className="text-green-400 text-sm font-semibold mt-2">
+                        ✅ Loan Fully Repaid by Borrower
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Document Verification Status */}
                 {loan.userId && (

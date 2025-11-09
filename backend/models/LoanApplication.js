@@ -16,6 +16,16 @@ const loanApplicationSchema = new mongoose.Schema({
     required: true,
     min: 0
   },
+  repaidAmount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  remainingAmount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
   purpose: {
     type: String,
     required: true,

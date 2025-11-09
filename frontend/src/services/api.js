@@ -184,6 +184,44 @@ export const healthCheck = async () => {
   return apiRequest('/health');
 };
 
+// ============ Notifications API ============
+
+export const notificationsAPI = {
+  /**
+   * Get all notifications for current user
+   */
+  getAllNotifications: async () => {
+    return apiRequest('/api/notifications');
+  },
+
+  /**
+   * Mark notification as read
+   */
+  markAsRead: async (notificationId) => {
+    return apiRequest(`/api/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+    });
+  },
+
+  /**
+   * Mark all notifications as read
+   */
+  markAllAsRead: async () => {
+    return apiRequest('/api/notifications/read-all', {
+      method: 'PATCH',
+    });
+  },
+
+  /**
+   * Delete notification
+   */
+  deleteNotification: async (notificationId) => {
+    return apiRequest(`/api/notifications/${notificationId}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 // Export default API object
 export default {
   analytics: analyticsAPI,
@@ -191,6 +229,7 @@ export default {
   loanTypes: loanTypesAPI,
   activity: activityAPI,
   user: userAPI,
+  notifications: notificationsAPI,
   healthCheck,
 };
 

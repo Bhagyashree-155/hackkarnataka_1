@@ -7,6 +7,7 @@ import loanRoutes from './routes/loans.js';
 import documentRoutes from './routes/documents.js';
 import adminRoutes from './routes/admin.js';
 import loanTypeRoutes from './routes/loanTypes.js';
+import notificationRoutes from './routes/notifications.js';
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ app.use('/api/loans', loanRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/loan-types', loanTypeRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -38,7 +40,9 @@ app.get('/', (req, res) => {
       auth: '/api/auth',
       loans: '/api/loans',
       documents: '/api/documents',
-      admin: '/api/admin'
+      admin: '/api/admin',
+      loanTypes: '/api/loan-types',
+      notifications: '/api/notifications'
     }
   });
 });
